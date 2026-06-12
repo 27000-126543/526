@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
-import { LayoutDashboard, AlertTriangle, TrendingUp, FileText, Bell, ChevronDown } from 'lucide-react'
+import { LayoutDashboard, AlertTriangle, Boxes, TrendingUp, FileText, Bell, ChevronDown } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/types'
@@ -8,6 +8,7 @@ import type { UserRole } from '@/types'
 const navItems = [
   { path: '/', label: '核心看板', icon: LayoutDashboard },
   { path: '/alert', label: '预警中心', icon: AlertTriangle },
+  { path: '/archive', label: '联运档案', icon: Boxes },
   { path: '/prediction', label: '运力预测', icon: TrendingUp },
   { path: '/report', label: '诊断报告', icon: FileText },
 ]
@@ -21,6 +22,7 @@ const roleLabels: Record<UserRole, string> = {
 const pageTitleMap: Record<string, string> = {
   '/': '核心看板',
   '/alert': '预警中心',
+  '/archive': '联运档案',
   '/prediction': '运力预测',
   '/report': '诊断报告',
 }

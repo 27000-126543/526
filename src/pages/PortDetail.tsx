@@ -1,6 +1,6 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import ReactECharts from 'echarts-for-react'
-import { ports } from '@/mock/data'
+import { useAppStore } from '@/store'
 import { ArrowLeft } from 'lucide-react'
 
 const modeColors: Record<string, string> = {
@@ -19,7 +19,8 @@ const statusStyles: Record<string, string> = {
 export default function PortDetail() {
   const { portId } = useParams<{ portId: string }>()
   const navigate = useNavigate()
-  const port = ports.find((p) => p.id === portId)
+  const filteredPorts = useAppStore().getFilteredPorts()
+  const port = filteredPorts.find((p) => p.id === portId)
 
   if (!port) {
     return (

@@ -100,3 +100,50 @@ export interface DiagnosticReport {
 export type UserRole = "scheduler" | "regional_manager" | "hq_director"
 
 export type TransportMode = "全部" | "铁水联运" | "公铁联运" | "水水联运" | "公水联运"
+
+export type ContainerStatus = "在途" | "中转" | "待发" | "抵达"
+
+export type NodeType = "港口" | "铁路场站" | "公路卡口" | "海关"
+
+export type NodeStatus = "已完成" | "在站" | "待到达"
+
+export type DataSource = "RFID" | "门架识别" | "海关放行" | "GPS"
+
+export interface TimelineNode {
+  id: string
+  type: NodeType
+  name: string
+  location: string
+  arrivalTime: string
+  departureTime: string
+  dwellHours: number
+  status: NodeStatus
+  dataSource: DataSource
+}
+
+export interface ContainerArchive {
+  id: string
+  containerNo: string
+  containerType: string
+  routeId: string
+  routeName: string
+  routeType: "铁水联运" | "公铁联运" | "水水联运" | "公水联运"
+  province: string
+  currentStatus: ContainerStatus
+  rfid: string
+  lastUpdateTime: string
+  timeline: TimelineNode[]
+}
+
+export interface ExcelParsedResult {
+  headers: string[]
+  rows: Record<string, string | number>[]
+  matchedFields: string[]
+  missingFields: string[]
+}
+
+export interface RoleScope {
+  role: UserRole
+  provinces: string[]
+  ports: string[]
+}

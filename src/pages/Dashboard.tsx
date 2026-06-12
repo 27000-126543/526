@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactECharts from 'echarts-for-react'
-import { Clock, Leaf, DollarSign, RotateCw, TrendingUp, TrendingDown, ChevronDown } from 'lucide-react'
+import { Clock, Leaf, DollarSign, RotateCw, TrendingUp, TrendingDown, ChevronDown, Shield } from 'lucide-react'
 import { useAppStore } from '@/store'
-import { transportRoutes } from '@/mock/data'
 import type { TransportMode } from '@/types'
 import ChinaHeatMap from '@/components/ChinaHeatMap'
 
@@ -22,20 +21,19 @@ const statusColor: Record<string, string> = {
   '超时': 'bg-alert-red/20 text-alert-red',
 }
 
+const roleBanner: Record<string, string> = {
+  scheduler: '当前仅显示上海站点数据',
+  regional_manager: '当前显示华东区域数据',
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { transportMode, setTransportMode, selectedProvince, setSelectedProvince } = useAppStore()
-
-  const filtered = useMemo(() => {
-    return transportRoutes.filter((r) => {
-      if (transportMode !== '全部' && r.routeType !== transportMode) return false
-      if (selectedProvince && r.province !== selectedProvince) return false
-      return true
-    })
-  }, [transportMode, selectedProvince])
+  const { userRole, transportMode, setTransportMode, selectedProvince, setSelectedProvince } = useAppStore()
+  const filtered = useAppStore().getFilteredRoutes()
 
   const kpis = useMemo(() => {
-    const rs = filtered.length ? filtered : transportRoutes
+    const rs = filtered.length ? filtered : []
+    if (!rs.length) return []
     const avg = (fn: (r: typeof rs[0]) => number) => rs.reduce((s, r) => s + fn(r), 0) / rs.length
     return [
       { label: '平均时效', value: avg((r) => r.avgTransitTime).toFixed(1), unit: '天', trend: -2.3, icon: Clock, color: '#00C9A7', data: [5.2, 5.4, 5.8, 5.5, 5.6, 5.7, 5.9] },
@@ -47,7 +45,7 @@ export default function Dashboard() {
 
   const provinceData = useMemo(() => {
     const map = new Map<string, { total: number; count: number }>()
-    ;(filtered.length ? filtered : transportRoutes).forEach((r) => {
+    filtered.forEach((r) => {
       const cur = map.get(r.province) || { total: 0, count: 0 }
       cur.total += r.avgTransitTime
       cur.count += 1
@@ -56,10 +54,11 @@ export default function Dashboard() {
     return Array.from(map, ([name, v]) => ({ name, avgTransitTime: +(v.total / v.count).toFixed(1), routeCount: v.count }))
   }, [filtered])
 
-  const provinces = useMemo(() => [...new Set(transportRoutes.map((r) => r.province))], [])
+  const scope = useAppStore().getScope()
+  const provinces = useMemo(() => scope.provinces, [scope])
 
   const carbonChart = useMemo(() => {
-    const sorted = [...(filtered.length ? filtered : transportRoutes)].sort((a, b) => b.carbonIntensity - a.carbonIntensity).slice(0, 10)
+    const sorted = [...filtered].sort((a, b) => b.carbonIntensity - a.carbonIntensity).slice(0, 10)
     return {
       grid: { top: 10, bottom: 20, left: 140, right: 40 },
       xAxis: { type: 'value', axisLine: { lineStyle: { color: '#1E3048' } }, axisLabel: { color: '#94A3B8', fontSize: 10 }, splitLine: { lineStyle: { color: '#1E3048' } } },
@@ -85,8 +84,17 @@ export default function Dashboard() {
     }
   }, [filtered])
 
+  const banner = roleBanner[userRole]
+
   return (
     <div className="min-h-0 space-y-5">
+      {banner && (
+        <div className="flex items-center gap-2 rounded-lg border border-carbon-500/30 bg-carbon-500/10 px-4 py-2 text-sm text-carbon-400">
+          <Shield className="h-4 w-4" />
+          {banner}
+        </div>
+      )}
+
       <div className="grid grid-cols-4 gap-4">
         {kpis.map((kpi) => {
           const Icon = kpi.icon

@@ -4,6 +4,8 @@ import type {
   Port,
   CapacityPrediction,
   DiagnosticReport,
+  ContainerArchive,
+  RoleScope,
 } from "../types"
 
 export const transportRoutes: TransportRoute[] = [
@@ -837,3 +839,143 @@ export const diagnosticReport: DiagnosticReport = {
     },
   ],
 }
+
+export const containerArchives: ContainerArchive[] = [
+  {
+    id: "C001", containerNo: "CSLU2345678", containerType: "40GP",
+    routeId: "R001", routeName: "上海-重庆铁水联运线", routeType: "铁水联运",
+    province: "上海", currentStatus: "中转",
+    rfid: "RFID-SH-001", lastUpdateTime: "2026-06-12 14:30:00",
+    timeline: [
+      { id: "T001", type: "港口", name: "上海港洋山码头", location: "上海", arrivalTime: "2026-06-10 08:00", departureTime: "2026-06-10 14:00", dwellHours: 6, status: "已完成", dataSource: "RFID" },
+      { id: "T002", type: "海关", name: "洋山海关", location: "上海", arrivalTime: "2026-06-10 08:30", departureTime: "2026-06-10 12:00", dwellHours: 3.5, status: "已完成", dataSource: "海关放行" },
+      { id: "T003", type: "港口", name: "武汉阳逻港", location: "湖北", arrivalTime: "2026-06-11 18:00", departureTime: "2026-06-12 06:00", dwellHours: 12, status: "已完成", dataSource: "门架识别" },
+      { id: "T004", type: "铁路场站", name: "重庆团结村站", location: "重庆", arrivalTime: "2026-06-12 14:00", departureTime: "", dwellHours: 0, status: "在站", dataSource: "GPS" },
+    ],
+  },
+  {
+    id: "C002", containerNo: "MSCU7890123", containerType: "40HC",
+    routeId: "R002", routeName: "宁波-成都公铁联运线", routeType: "公铁联运",
+    province: "浙江", currentStatus: "在途",
+    rfid: "RFID-NB-002", lastUpdateTime: "2026-06-12 10:15:00",
+    timeline: [
+      { id: "T005", type: "港口", name: "宁波舟山港北仑码头", location: "浙江", arrivalTime: "2026-06-11 06:00", departureTime: "2026-06-11 10:00", dwellHours: 4, status: "已完成", dataSource: "RFID" },
+      { id: "T006", type: "公路卡口", name: "宁波北仑公路卡口", location: "浙江", arrivalTime: "2026-06-11 10:30", departureTime: "2026-06-11 11:00", dwellHours: 0.5, status: "已完成", dataSource: "门架识别" },
+      { id: "T007", type: "铁路场站", name: "成都铁路港", location: "四川", arrivalTime: "2026-06-13 08:00", departureTime: "", dwellHours: 0, status: "待到达", dataSource: "GPS" },
+    ],
+  },
+  {
+    id: "C003", containerNo: "CMAU4567890", containerType: "20GP",
+    routeId: "R003", routeName: "广州-海口水水联运线", routeType: "水水联运",
+    province: "广东", currentStatus: "在途",
+    rfid: "RFID-GZ-003", lastUpdateTime: "2026-06-12 09:00:00",
+    timeline: [
+      { id: "T008", type: "港口", name: "广州南沙港", location: "广东", arrivalTime: "2026-06-11 12:00", departureTime: "2026-06-11 16:00", dwellHours: 4, status: "已完成", dataSource: "RFID" },
+      { id: "T009", type: "海关", name: "南沙海关", location: "广东", arrivalTime: "2026-06-11 13:00", departureTime: "2026-06-11 15:00", dwellHours: 2, status: "已完成", dataSource: "海关放行" },
+      { id: "T010", type: "港口", name: "海口港", location: "海南", arrivalTime: "2026-06-12 18:00", departureTime: "", dwellHours: 0, status: "待到达", dataSource: "GPS" },
+    ],
+  },
+  {
+    id: "C004", containerNo: "EISU1234567", containerType: "40GP",
+    routeId: "R004", routeName: "青岛-西安铁水联运线", routeType: "铁水联运",
+    province: "山东", currentStatus: "中转",
+    rfid: "RFID-QD-004", lastUpdateTime: "2026-06-12 11:45:00",
+    timeline: [
+      { id: "T011", type: "港口", name: "青岛前湾港", location: "山东", arrivalTime: "2026-06-09 20:00", departureTime: "2026-06-10 02:00", dwellHours: 6, status: "已完成", dataSource: "RFID" },
+      { id: "T012", type: "铁路场站", name: "济南铁路编组站", location: "山东", arrivalTime: "2026-06-10 14:00", departureTime: "2026-06-11 02:00", dwellHours: 12, status: "已完成", dataSource: "门架识别" },
+      { id: "T013", type: "铁路场站", name: "西安铁路港", location: "陕西", arrivalTime: "2026-06-12 06:00", departureTime: "", dwellHours: 0, status: "在站", dataSource: "GPS" },
+    ],
+  },
+  {
+    id: "C005", containerNo: "OOLU9876543", containerType: "20RF",
+    routeId: "R010", routeName: "广州-贵阳公铁联运线", routeType: "公铁联运",
+    province: "广东", currentStatus: "在途",
+    rfid: "RFID-GZ-005", lastUpdateTime: "2026-06-12 16:00:00",
+    timeline: [
+      { id: "T014", type: "港口", name: "广州黄埔港", location: "广东", arrivalTime: "2026-06-10 06:00", departureTime: "2026-06-10 12:00", dwellHours: 6, status: "已完成", dataSource: "RFID" },
+      { id: "T015", type: "海关", name: "黄埔海关", location: "广东", arrivalTime: "2026-06-10 07:00", departureTime: "2026-06-10 10:00", dwellHours: 3, status: "已完成", dataSource: "海关放行" },
+      { id: "T016", type: "公路卡口", name: "广州北公路卡口", location: "广东", arrivalTime: "2026-06-10 13:00", departureTime: "2026-06-10 14:00", dwellHours: 1, status: "已完成", dataSource: "门架识别" },
+      { id: "T017", type: "铁路场站", name: "贵阳铁路港", location: "贵州", arrivalTime: "2026-06-13 06:00", departureTime: "", dwellHours: 0, status: "待到达", dataSource: "GPS" },
+    ],
+  },
+  {
+    id: "C006", containerNo: "HLXU3456789", containerType: "40GP",
+    routeId: "R013", routeName: "大连-哈尔滨公铁联运线", routeType: "公铁联运",
+    province: "辽宁", currentStatus: "中转",
+    rfid: "RFID-DL-006", lastUpdateTime: "2026-06-12 13:20:00",
+    timeline: [
+      { id: "T018", type: "港口", name: "大连大窑湾港", location: "辽宁", arrivalTime: "2026-06-10 10:00", departureTime: "2026-06-10 16:00", dwellHours: 6, status: "已完成", dataSource: "RFID" },
+      { id: "T019", type: "铁路场站", name: "沈阳铁路枢纽", location: "辽宁", arrivalTime: "2026-06-11 08:00", departureTime: "2026-06-12 08:00", dwellHours: 24, status: "已完成", dataSource: "门架识别" },
+      { id: "T020", type: "铁路场站", name: "哈尔滨铁路港", location: "黑龙江", arrivalTime: "2026-06-12 20:00", departureTime: "", dwellHours: 0, status: "待到达", dataSource: "GPS" },
+    ],
+  },
+  {
+    id: "C007", containerNo: "TGHU5678901", containerType: "20GP",
+    routeId: "R005", routeName: "天津-大连水水联运线", routeType: "水水联运",
+    province: "天津", currentStatus: "抵达",
+    rfid: "RFID-TJ-007", lastUpdateTime: "2026-06-12 08:30:00",
+    timeline: [
+      { id: "T021", type: "港口", name: "天津新港", location: "天津", arrivalTime: "2026-06-11 06:00", departureTime: "2026-06-11 10:00", dwellHours: 4, status: "已完成", dataSource: "RFID" },
+      { id: "T022", type: "港口", name: "大连港", location: "辽宁", arrivalTime: "2026-06-12 06:00", departureTime: "2026-06-12 08:00", dwellHours: 2, status: "已完成", dataSource: "门架识别" },
+    ],
+  },
+  {
+    id: "C008", containerNo: "YMLU8901234", containerType: "40HC",
+    routeId: "R007", routeName: "厦门-武汉铁水联运线", routeType: "铁水联运",
+    province: "福建", currentStatus: "在途",
+    rfid: "RFID-XM-008", lastUpdateTime: "2026-06-12 12:00:00",
+    timeline: [
+      { id: "T023", type: "港口", name: "厦门海天码头", location: "福建", arrivalTime: "2026-06-11 08:00", departureTime: "2026-06-11 14:00", dwellHours: 6, status: "已完成", dataSource: "RFID" },
+      { id: "T024", type: "海关", name: "厦门海关", location: "福建", arrivalTime: "2026-06-11 09:00", departureTime: "2026-06-11 12:00", dwellHours: 3, status: "已完成", dataSource: "海关放行" },
+      { id: "T025", type: "港口", name: "武汉港", location: "湖北", arrivalTime: "2026-06-13 06:00", departureTime: "", dwellHours: 0, status: "待到达", dataSource: "GPS" },
+    ],
+  },
+  {
+    id: "C009", containerNo: "CSLU6789012", containerType: "40GP",
+    routeId: "R009", routeName: "宁波-长沙铁水联运线", routeType: "铁水联运",
+    province: "浙江", currentStatus: "中转",
+    rfid: "RFID-NB-009", lastUpdateTime: "2026-06-12 15:00:00",
+    timeline: [
+      { id: "T026", type: "港口", name: "宁波舟山港穿山码头", location: "浙江", arrivalTime: "2026-06-10 14:00", departureTime: "2026-06-10 20:00", dwellHours: 6, status: "已完成", dataSource: "RFID" },
+      { id: "T027", type: "铁路场站", name: "长沙港", location: "湖南", arrivalTime: "2026-06-12 10:00", departureTime: "", dwellHours: 5, status: "在站", dataSource: "门架识别" },
+    ],
+  },
+  {
+    id: "C010", containerNo: "MSCU2345678", containerType: "20RF",
+    routeId: "R015", routeName: "厦门-南昌公铁联运线", routeType: "公铁联运",
+    province: "福建", currentStatus: "在途",
+    rfid: "RFID-XM-010", lastUpdateTime: "2026-06-12 11:30:00",
+    timeline: [
+      { id: "T028", type: "港口", name: "厦门东渡码头", location: "福建", arrivalTime: "2026-06-11 16:00", departureTime: "2026-06-11 20:00", dwellHours: 4, status: "已完成", dataSource: "RFID" },
+      { id: "T029", type: "铁路场站", name: "鹰潭编组站", location: "江西", arrivalTime: "2026-06-12 08:00", departureTime: "2026-06-12 14:00", dwellHours: 6, status: "已完成", dataSource: "门架识别" },
+      { id: "T030", type: "铁路场站", name: "南昌铁路港", location: "江西", arrivalTime: "2026-06-12 22:00", departureTime: "", dwellHours: 0, status: "待到达", dataSource: "GPS" },
+    ],
+  },
+  {
+    id: "C011", containerNo: "EGLU5432167", containerType: "20GP",
+    routeId: "R008", routeName: "上海-连云港公水联运线", routeType: "公水联运",
+    province: "上海", currentStatus: "抵达",
+    rfid: "RFID-SH-011", lastUpdateTime: "2026-06-11 18:00:00",
+    timeline: [
+      { id: "T031", type: "港口", name: "上海外高桥码头", location: "上海", arrivalTime: "2026-06-10 20:00", departureTime: "2026-06-11 02:00", dwellHours: 6, status: "已完成", dataSource: "RFID" },
+      { id: "T032", type: "公路卡口", name: "连云港公路卡口", location: "江苏", arrivalTime: "2026-06-11 14:00", departureTime: "2026-06-11 16:00", dwellHours: 2, status: "已完成", dataSource: "门架识别" },
+    ],
+  },
+  {
+    id: "C012", containerNo: "KMTU8765432", containerType: "40GP",
+    routeId: "R006", routeName: "深圳-昆明公铁联运线", routeType: "公铁联运",
+    province: "广东", currentStatus: "在途",
+    rfid: "RFID-SZ-012", lastUpdateTime: "2026-06-12 09:45:00",
+    timeline: [
+      { id: "T033", type: "港口", name: "深圳盐田港", location: "广东", arrivalTime: "2026-06-10 12:00", departureTime: "2026-06-10 18:00", dwellHours: 6, status: "已完成", dataSource: "RFID" },
+      { id: "T034", type: "海关", name: "盐田海关", location: "广东", arrivalTime: "2026-06-10 13:00", departureTime: "2026-06-10 16:00", dwellHours: 3, status: "已完成", dataSource: "海关放行" },
+      { id: "T035", type: "铁路场站", name: "昆明铁路港", location: "云南", arrivalTime: "2026-06-13 10:00", departureTime: "", dwellHours: 0, status: "待到达", dataSource: "GPS" },
+    ],
+  },
+]
+
+export const roleScopes: RoleScope[] = [
+  { role: "scheduler", provinces: ["上海"], ports: ["P001"] },
+  { role: "regional_manager", provinces: ["上海", "浙江", "山东"], ports: ["P001", "P002", "P004"] },
+  { role: "hq_director", provinces: ["上海", "浙江", "广东", "山东", "天津", "辽宁", "福建"], ports: ["P001", "P002", "P003", "P004", "P005", "P006", "P007", "P008"] },
+]
