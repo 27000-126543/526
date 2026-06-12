@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAppStore } from '@/store'
 import type { AlertItem, ApprovalRecord, TransportRoute } from '@/types'
-import { AlertTriangle, Clock, CheckCircle, XCircle, ChevronRight, User, Timer, ArrowUpCircle, Send, X, Ban, CircleOff } from 'lucide-react'
+import { AlertTriangle, Clock, CheckCircle, XCircle, ChevronRight, User, Timer, ArrowUpCircle, Send, X, Ban, CircleOff, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const levelTabs = ['全部', '一级预警', '二级预警'] as const
@@ -65,11 +65,16 @@ export default function AlertCenter() {
   const { alerts, updateAlert, userRole, getFilteredAlerts, getFilteredRoutes, autoUpgradeAlerts, rejectAlert, closeAlert, triggeredAlertId, setTriggeredAlertId } = useAppStore()
   const [levelFilter, setLevelFilter] = useState<string>('全部')
   const [statusFilter, setStatusFilter] = useState<string>('全部')
-  const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null)
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
   const [autoMerged, setAutoMerged] = useState(false)
   const [upgraded, setUpgraded] = useState(false)
   const [comment, setComment] = useState('')
   const [now, setNow] = useState(Date.now())
+
+  const selectedAlert = useMemo(() => {
+    if (!selectedAlertId) return null
+    return alerts.find((a) => a.id === selectedAlertId) ?? null
+  }, [selectedAlertId, alerts])
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
@@ -96,11 +101,10 @@ export default function AlertCenter() {
 
   useEffect(() => {
     if (triggeredAlertId && autoMerged) {
-      const target = alerts.find((a) => a.id === triggeredAlertId)
-      if (target) setSelectedAlert(target)
+      setSelectedAlertId(triggeredAlertId)
       setTriggeredAlertId(null)
     }
-  }, [triggeredAlertId, autoMerged, alerts])
+  }, [triggeredAlertId, autoMerged])
 
   const filteredAlerts = useMemo(() => {
     const base = getFilteredAlerts()
@@ -125,13 +129,13 @@ export default function AlertCenter() {
     const stepConfig = stepHandlers.find((s) => s.step === currentStep + 1)
     if (!stepConfig || stepConfig.roleKey !== userRole) return
 
-    const now = new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
+    const nowStr = new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
     const finalComment = comment.trim() || `${stepConfig.handler}${stepConfig.action}通过`
     const record: ApprovalRecord = {
       step: stepConfig.step,
       role: `${stepConfig.role.split('确认')[0].split('复核')[0].split('批准')[0]} ${stepConfig.handler}`,
       action: stepConfig.action,
-      time: now,
+      time: nowStr,
       comment: finalComment,
     }
 
@@ -149,34 +153,31 @@ export default function AlertCenter() {
     }
 
     updateAlert(alert.id, updates)
-    setSelectedAlert({ ...alert, ...updates } as AlertItem)
     setComment('')
   }
 
   const handleReject = (alert: AlertItem) => {
     const finalComment = comment.trim() || '处置不符合要求，予以驳回'
     rejectAlert(alert.id, finalComment)
-    const latest = alerts.find((a) => a.id === alert.id)
-    if (latest) setSelectedAlert({ ...latest })
     setComment('')
   }
 
   const handleClose = (alert: AlertItem) => {
     const finalComment = comment.trim() || '问题已处理，关闭预警'
     closeAlert(alert.id, finalComment)
-    const latest = alerts.find((a) => a.id === alert.id)
-    if (latest) setSelectedAlert({ ...latest })
     setComment('')
   }
 
   const isMyTurnToApprove = (alert: AlertItem) => {
+    if (alert.status === '已关闭') return false
+    if (alert.approval.step >= 3) return false
     const nextStep = alert.approval.step + 1
     const stepConfig = stepHandlers.find((s) => s.step === nextStep)
-    return stepConfig?.roleKey === userRole && alert.status !== '已关闭'
+    return stepConfig?.roleKey === userRole
   }
 
-  const canClose = (alert: AlertItem) => alert.status !== '已关闭'
-  const canReject = isMyTurnToApprove
+  const isFullyApproved = (alert: AlertItem) => alert.approval.step >= 3
+  const isClosed = (alert: AlertItem) => alert.status === '已关闭'
 
   return (
     <div className="space-y-5 font-noto">
@@ -249,7 +250,7 @@ export default function AlertCenter() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => setSelectedAlert(alert)} className="flex items-center gap-1 text-carbon-500 hover:text-carbon-400 transition-colors">
+                    <button onClick={() => setSelectedAlertId(alert.id)} className="flex items-center gap-1 text-carbon-500 hover:text-carbon-400 transition-colors">
                       详情 <ChevronRight className="h-3 w-3" />
                     </button>
                   </td>
@@ -266,7 +267,7 @@ export default function AlertCenter() {
       </div>
 
       {selectedAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setSelectedAlert(null); setComment('') }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setSelectedAlertId(null); setComment('') }}>
           <div className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-surface-border bg-surface-card p-6" onClick={(e) => e.stopPropagation()}>
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -276,7 +277,7 @@ export default function AlertCenter() {
                 </span>
                 <span className={cn('rounded px-2 py-0.5 text-xs font-medium', statusColors[selectedAlert.status])}>{selectedAlert.status}</span>
               </h2>
-              <button onClick={() => { setSelectedAlert(null); setComment('') }} className="text-gray-400 hover:text-white">
+              <button onClick={() => { setSelectedAlertId(null); setComment('') }} className="text-gray-400 hover:text-white">
                 <XCircle className="h-5 w-5" />
               </button>
             </div>
@@ -341,7 +342,7 @@ export default function AlertCenter() {
                         </span>
                         {record ? (
                           <span className="text-[10px] mt-0.5 text-gray-500 whitespace-nowrap">{record.time.split(' ')[1]}</span>
-                        ) : isCurrent && selectedAlert.status !== '已关闭' ? (
+                        ) : isCurrent && !isClosed(selectedAlert) ? (
                           <span className="text-[10px] mt-0.5 text-carbon-400 animate-pulse">待处理</span>
                         ) : null}
                       </div>
@@ -412,50 +413,53 @@ export default function AlertCenter() {
               </div>
             )}
 
-            {selectedAlert.status !== '已关闭' && (
-              <div className="mb-4">
-                <label className="mb-1 block text-xs text-gray-400">处理意见（可选）</label>
-                <div className="flex gap-2">
+            {isClosed(selectedAlert) ? (
+              <div className="flex items-center gap-2 rounded-lg border border-gray-600/30 bg-gray-600/5 px-4 py-3 text-sm text-gray-400">
+                <Eye className="h-4 w-4" />
+                预警已关闭，仅可查看历史记录
+              </div>
+            ) : isFullyApproved(selectedAlert) ? (
+              <div className="flex items-center gap-2 rounded-lg border border-green-600/30 bg-green-600/5 px-4 py-3 text-sm text-green-400">
+                <CheckCircle className="h-4 w-4" />
+                三级审批已全部完成，预警流程结束
+              </div>
+            ) : isMyTurnToApprove(selectedAlert) ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs text-gray-400">处理意见（可选）</label>
                   <input
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     placeholder="请输入处置说明或备注..."
-                    className="flex-1 rounded-lg border border-surface-border bg-surface-dark px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:border-carbon-500/50 focus:outline-none"
+                    className="w-full rounded-lg border border-surface-border bg-surface-dark px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:border-carbon-500/50 focus:outline-none"
                   />
                 </div>
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              {isMyTurnToApprove(selectedAlert) && (
-                <>
+                <div className="flex gap-2">
                   <button onClick={() => handleApprove(selectedAlert)} className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-carbon-500 py-2.5 text-sm font-medium text-surface-dark hover:bg-carbon-400 transition-colors">
                     <CheckCircle className="h-4 w-4" />
                     {stepHandlers.find((s) => s.step === selectedAlert.approval.step + 1)?.action}通过
                   </button>
-                  {canReject(selectedAlert) && (
-                    <button onClick={() => handleReject(selectedAlert)} className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-orange-500/50 bg-orange-500/10 py-2.5 text-sm font-medium text-orange-400 hover:bg-orange-500/20 transition-colors">
-                      <Ban className="h-4 w-4" />驳回
-                    </button>
-                  )}
-                </>
-              )}
-              {!isMyTurnToApprove(selectedAlert) && selectedAlert.status !== '已关闭' && !isMyTurnToApprove(selectedAlert) && (
-                <div className="flex-1 rounded-lg border border-dashed border-surface-border py-2.5 text-center text-xs text-gray-500">
-                  当前非您处理环节：{
-                    selectedAlert.approval.step >= 3 ? '审批已完成' : `等待${stepHandlers[selectedAlert.approval.step]?.handler || ''}处理`
-                  }
+                  <button onClick={() => handleReject(selectedAlert)} className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-orange-500/50 bg-orange-500/10 py-2.5 text-sm font-medium text-orange-400 hover:bg-orange-500/20 transition-colors">
+                    <Ban className="h-4 w-4" />驳回
+                  </button>
+                  <button onClick={() => handleClose(selectedAlert)} className="flex items-center justify-center gap-1 rounded-lg border border-gray-500/40 bg-gray-500/10 px-5 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-500/20 transition-colors">
+                    <CircleOff className="h-4 w-4" />关闭
+                  </button>
+                  <button onClick={() => { setSelectedAlertId(null); setComment('') }} className="rounded-lg border border-surface-border px-5 py-2.5 text-sm text-gray-400 hover:bg-surface-hover transition-colors">
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-              )}
-              {canClose(selectedAlert) && (
-                <button onClick={() => handleClose(selectedAlert)} className="flex items-center justify-center gap-1 rounded-lg border border-gray-500/40 bg-gray-500/10 px-5 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-500/20 transition-colors">
-                  <CircleOff className="h-4 w-4" />关闭
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 rounded-lg border border-dashed border-surface-border py-2.5 text-center text-xs text-gray-500">
+                  当前非您处理环节：等待{stepHandlers[selectedAlert.approval.step]?.handler || '处理人'}处理
+                </div>
+                <button onClick={() => { setSelectedAlertId(null); setComment('') }} className="rounded-lg border border-surface-border px-5 py-2.5 text-sm text-gray-400 hover:bg-surface-hover transition-colors">
+                  <X className="h-4 w-4" />
                 </button>
-              )}
-              <button onClick={() => { setSelectedAlert(null); setComment('') }} className="rounded-lg border border-surface-border px-5 py-2.5 text-sm text-gray-400 hover:bg-surface-hover transition-colors">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -270,10 +270,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const routeProvinces = [...new Set(filteredRoutes.map((r) => r.province))]
     const routeCities = filteredRoutes.map((r) => r.name.split('-')[0])
-    const scopePorts = scope.ports
-      .map((pid) => ports.find((p) => p.id === pid)?.name.replace(/港$/, ''))
-      .filter(Boolean) as string[]
-    const allKeywords = [...new Set([...scope.provinces, ...routeProvinces, ...routeCities, ...scopePorts])]
+    const filteredPortIds = new Set(filteredRoutes.map((r) => r.name.split('-')).flat())
+    const scopePorts = ports
+      .filter((p) => routeProvinces.includes(p.province))
+      .map((p) => p.name.replace(/港$/, ''))
+    const allKeywords = [...new Set([...routeProvinces, ...routeCities, ...scopePorts])]
     const matchedRecs = diagnosticReport.recommendations.filter((rec) =>
       allKeywords.some((kw) => rec.description.includes(kw))
     )
@@ -287,12 +288,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         (recCities.includes(r.province))
       ).slice(0, 3)
       if (!relRoutes.length) relRoutes.push(filteredRoutes[0])
-      const relPortIds = [...new Set(scope.ports.filter((pid) => {
-        const p = ports.find((pp) => pp.id === pid)
-        if (!p) return false
-        const pCity = p.name.replace(/港$/, '')
-        return relRoutes.some((r) => r.name.includes(pCity) || r.province === p.province)
-      }))].slice(0, 2)
+      const relPortIds = [...new Set(ports
+        .filter((p) => routeProvinces.includes(p.province) && relRoutes.some((r) => r.name.includes(p.name.replace(/港$/, '')) || r.province === p.province))
+        .map((p) => p.id)
+      )].slice(0, 2)
       const relPorts = relPortIds.map((pid) => ports.find((p) => p.id === pid)!).filter(Boolean)
       const savings = {
         transitDays: +(0.5 + (relRoutes[0]?.avgTransitTime || 5) * 0.08 + Math.random() * 0).toFixed(1),
@@ -312,10 +311,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...rec,
         drilldown: {
           relatedRoutes: relRoutes.map((r) => ({ id: r.id, name: r.name, province: r.province, routeType: r.routeType })),
-          relatedPorts: relPorts.length ? relPorts.map((p) => ({ id: p.id, name: p.name, province: p.province })) : scope.ports.slice(0, 2).map((pid) => {
-            const pp = ports.find((x) => x.id === pid)!
-            return { id: pp.id, name: pp.name, province: pp.province }
-          }),
+          relatedPorts: relPorts.length ? relPorts.map((p) => ({ id: p.id, name: p.name, province: p.province })) : ports.filter((p) => routeProvinces.includes(p.province)).slice(0, 2).map((p) => ({ id: p.id, name: p.name, province: p.province })),
           savings,
           vsNationalAvg,
         },

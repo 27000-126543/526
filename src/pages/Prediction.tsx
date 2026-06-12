@@ -147,6 +147,7 @@ export default function Prediction() {
 
   const data = useMemo(() => predictionData ?? (capacityPrediction as CapacityPrediction), [predictionData])
 
+  const baselineTimeline = useMemo(() => predictionHistory?.prediction.timeline, [predictionHistory])
   const totalPrevGap = useMemo(() => predictionHistory?.prediction.gap.reduce((s, g) => s + g.gapAmount, 0) ?? 0, [predictionHistory])
   const totalCurGap = useMemo(() => data.gap.reduce((s, g) => s + g.gapAmount, 0), [data.gap])
 
@@ -154,10 +155,9 @@ export default function Prediction() {
     const hours = data.timeline.map(t => t.hour)
     const demand = data.timeline.map(t => t.demand)
     const available = data.timeline.map(t => t.available)
-    const prev = predictionHistory?.prediction.timeline
     return {
       tooltip: { trigger: 'axis', backgroundColor: '#141E2E', borderColor: '#1E3048', textStyle: { color: '#E2E8F0' } },
-      legend: { data: prev ? ['需求运力', '可用运力', '运力缺口', '上次需求'] : ['需求运力', '可用运力', '运力缺口'], textStyle: { color: '#94A3B8' }, top: 0 },
+      legend: { data: baselineTimeline ? ['需求运力', '可用运力', '运力缺口', '上次需求'] : ['需求运力', '可用运力', '运力缺口'], textStyle: { color: '#94A3B8' }, top: 0 },
       grid: { left: 50, right: 20, top: 40, bottom: 30 },
       xAxis: { type: 'category', data: hours, axisLine: { lineStyle: { color: '#1E3048' } }, axisLabel: { color: '#94A3B8' } },
       yAxis: { type: 'value', name: 'TEU', nameTextStyle: { color: '#94A3B8' }, axisLine: { lineStyle: { color: '#1E3048' } }, splitLine: { lineStyle: { color: '#1E3048' } }, axisLabel: { color: '#94A3B8' } },
@@ -177,13 +177,13 @@ export default function Prediction() {
           lineStyle: { color: 'rgba(255,71,87,0.8)', width: 2 }, itemStyle: { color: '#FF4757' },
           areaStyle: { color: 'rgba(255,71,87,0.2)' },
         },
-        ...(prev ? [{
-          name: '上次需求', type: 'line', data: prev.map(t => t.demand), smooth: true,
+        ...(baselineTimeline ? [{
+          name: '上次需求', type: 'line', data: baselineTimeline.map(t => t.demand), smooth: true,
           lineStyle: { color: '#A78BFA', width: 1.5, type: 'dashed' }, itemStyle: { color: '#A78BFA' },
         }] : []),
       ],
     }
-  }, [data, predictionHistory])
+  }, [data, baselineTimeline])
 
   const handleFile = useCallback((file: File) => {
     if (!file.name.match(/\.xlsx?$/)) return
@@ -203,10 +203,10 @@ export default function Prediction() {
             const pred = buildPrediction(result)
 
             const inputHash = hashCode(JSON.stringify(result.rows))
-            const prevPred = predictionData ?? (capacityPrediction as CapacityPrediction)
             const isSameInput = predictionHistory ? predictionHistory.hash === inputHash : false
 
-            const prevTimeline = predictionHistory ? predictionHistory.prediction.timeline : prevPred.timeline
+            const baselinePred = predictionHistory ? predictionHistory.prediction : (capacityPrediction as CapacityPrediction)
+            const baselineTimeline = baselinePred.timeline
             const curTimeline = pred.timeline
 
             const gapByHour = (tl: CapacityTimelineSlot[]) => {
@@ -214,7 +214,7 @@ export default function Prediction() {
               tl.forEach(t => { m[t.hour] = Math.max(0, t.demand - t.available) })
               return m
             }
-            const prevG = gapByHour(prevTimeline)
+            const prevG = gapByHour(baselineTimeline)
             const curG = gapByHour(curTimeline)
             const gapDiff: { hour: string; delta: number; current: number; previous: number }[] = []
             const allHours = Array.from(new Set([...Object.keys(prevG), ...Object.keys(curG)])).sort()
@@ -223,14 +223,14 @@ export default function Prediction() {
               if (c !== pv) gapDiff.push({ hour: h, delta: c - pv, current: c, previous: pv })
             })
 
-            const prevRecs = (predictionHistory ? predictionHistory.prediction : prevPred).recommendations
+            const prevRecs = baselinePred.recommendations
             const curRecs = pred.recommendations
             const prevIds = new Set(prevRecs.map(r => r.id))
             const curIds = new Set(curRecs.map(r => r.id))
             const recAdded = curRecs.filter(r => !prevIds.has(r.id))
             const recRemoved = prevRecs.filter(r => !curIds.has(r.id))
 
-            const totalPrev = (predictionHistory ? predictionHistory.prediction : prevPred).gap.reduce((s, g) => s + g.gapAmount, 0)
+            const totalPrev = baselinePred.gap.reduce((s, g) => s + g.gapAmount, 0)
             const totalCur = pred.gap.reduce((s, g) => s + g.gapAmount, 0)
             const totalGapDelta = totalCur - totalPrev
 
@@ -244,18 +244,20 @@ export default function Prediction() {
               currentInputHash: inputHash,
             })
 
-            setPredictionHistory({
-              hash: inputHash,
-              timestamp: new Date().toISOString(),
-              inputSummary: {
-                rowCount: result.rows.length,
-                fields: result.matchedFields,
-                fileName: file.name,
-                totalTEU: result.rows.reduce((s, r) => s + (Number(r['箱量']) || 0), 0),
-                etaCount: result.rows.filter(r => String(r['预计到港时间'] || '').trim() !== '').length,
-              },
-              prediction: pred,
-            })
+            if (!isSameInput) {
+              setPredictionHistory({
+                hash: inputHash,
+                timestamp: new Date().toISOString(),
+                inputSummary: {
+                  rowCount: result.rows.length,
+                  fields: result.matchedFields,
+                  fileName: file.name,
+                  totalTEU: result.rows.reduce((s, r) => s + (Number(r['箱量']) || 0), 0),
+                  etaCount: result.rows.filter(r => String(r['预计到港时间'] || '').trim() !== '').length,
+                },
+                prediction: pred,
+              })
+            }
 
             setExcelResult(result)
             setPredictionData(pred)
@@ -269,7 +271,7 @@ export default function Prediction() {
       }, 200)
     }
     reader.readAsArrayBuffer(file)
-  }, [setExcelResult, setPredictionData, setPredictionHistory, setCompareResult, predictionData, predictionHistory])
+  }, [setExcelResult, setPredictionData, setPredictionHistory, setCompareResult, predictionHistory])
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
