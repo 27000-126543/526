@@ -1,8 +1,9 @@
 import ReactECharts from 'echarts-for-react'
 import { useAppStore } from '@/store'
 import type { DiagnosticReport } from '@/types'
-import { TrendingUp, TrendingDown, Leaf, DollarSign, Lightbulb, Shield } from 'lucide-react'
-import { useMemo } from 'react'
+import { TrendingUp, TrendingDown, Leaf, DollarSign, Lightbulb, Shield, ChevronDown, ChevronUp, Route, Anchor, Clock, BarChart3 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { cn } from '@/lib/utils'
 
 const priorityColor: Record<string, string> = { 高: 'bg-alert-red', 中: 'bg-alert-orange', 低: 'bg-carbon-500' }
 const typeColor: Record<string, string> = { 优化路径: 'bg-carbon-500', 减排策略: 'bg-blue-500' }
@@ -92,6 +93,7 @@ const scopeLabel: Record<string, string> = {
 export default function Report() {
   const report = useAppStore().getFilteredReport()
   const { userRole, transportMode, selectedProvince } = useAppStore()
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
 
   const scopeText = scopeLabel[userRole] || '全国'
   const modeText = transportMode === '全部' ? '' : ` · ${transportMode}`
@@ -133,8 +135,8 @@ export default function Report() {
           <div className="flex items-center gap-2 text-slate-400 text-sm"><TrendingUp className="h-4 w-4" />全程时效</div>
           <div className="mt-2 font-din text-3xl font-bold">{tt.current}<span className="ml-1 text-base font-normal text-slate-400">天</span></div>
           <div className="mt-2 flex gap-4 text-xs">
-            <span className={wowUp ? 'text-alert-red' : 'text-carbon-500'}>{wowUp ? <TrendingUp className="inline h-3 w-3" /> : <TrendingDown className="inline h-3 w-3" />}环比 {wowUp ? '+' : ''}{tt.weekOnWeek}</span>
-            <span className={yoyUp ? 'text-alert-red' : 'text-carbon-500'}>{yoyUp ? <TrendingUp className="inline h-3 w-3" /> : <TrendingDown className="inline h-3 w-3" />}同比 {yoyUp ? '+' : ''}{tt.yearOnYear}</span>
+            <span className={wowUp ? 'text-alert-red' : 'text-carbon-500'}>{wowUp ? <TrendingUp className="inline h-3 w-3" /> : <TrendingDown className="inline h-3 w-3" />} 环比 {wowUp ? '+' : ''}{tt.weekOnWeek}</span>
+            <span className={yoyUp ? 'text-alert-red' : 'text-carbon-500'}>{yoyUp ? <TrendingUp className="inline h-3 w-3" /> : <TrendingDown className="inline h-3 w-3" />} 同比 {yoyUp ? '+' : ''}{tt.yearOnYear}</span>
           </div>
         </div>
         <div className="rounded-xl border border-surface-border bg-surface-card p-5 card-glow">
@@ -175,18 +177,106 @@ export default function Report() {
 
       {report.recommendations.length > 0 && (
         <section className="rounded-xl border border-surface-border bg-surface-card p-5 card-glow">
-          <h3 className="mb-4 flex items-center gap-2 text-base font-semibold"><Lightbulb className="h-4 w-4 text-carbon-500" />优化建议</h3>
-          <div className="grid grid-cols-2 gap-4">
-            {report.recommendations.map((r, i) => (
-              <div key={i} className="rounded-lg border border-surface-border bg-surface-dark p-4">
-                <div className="flex items-center gap-2">
-                  <span className={`rounded px-2 py-0.5 text-xs font-medium text-white ${typeColor[r.type]}`}>{r.type}</span>
-                  <span className={`rounded px-2 py-0.5 text-xs font-medium text-white ${priorityColor[r.priority]}`}>{r.priority}</span>
+          <h3 className="mb-4 flex items-center gap-2 text-base font-semibold"><Lightbulb className="h-4 w-4 text-carbon-500" />优化建议（点击卡片展开下钻）</h3>
+          <div className="space-y-3">
+            {report.recommendations.map((r, i) => {
+              const isExpanded = expandedIdx === i
+              return (
+                <div key={i} className="rounded-lg border border-surface-border bg-surface-dark overflow-hidden">
+                  <button
+                    onClick={() => setExpandedIdx(isExpanded ? null : i)}
+                    className="w-full p-4 text-left transition-colors hover:bg-surface-hover/60">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded px-2 py-0.5 text-xs font-medium text-white ${typeColor[r.type]}`}>{r.type}</span>
+                        <span className={`rounded px-2 py-0.5 text-xs font-medium text-white ${priorityColor[r.priority]}`}>{r.priority}</span>
+                      </div>
+                      <span className="flex-1 text-sm text-slate-300">{r.description}</span>
+                      {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />}
+                    </div>
+                    <p className="mt-1 text-xs text-carbon-400 ml-16">预期收益：{r.expectedSaving}</p>
+                  </button>
+                  {isExpanded && r.drilldown && (
+                    <div className="border-t border-surface-border p-4 space-y-4">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="rounded-md border border-green-500/30 bg-green-500/5 p-3">
+                          <div className="flex items-center gap-1 text-[11px] text-green-400"><Clock className="h-3 w-3" />预计节省时效</div>
+                          <div className="mt-1 font-din text-2xl font-bold text-green-400">{r.drilldown.savings.transitDays}<span className="ml-1 text-xs font-normal text-gray-500">天</span></div>
+                        </div>
+                        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+                          <div className="flex items-center gap-1 text-[11px] text-amber-400"><DollarSign className="h-3 w-3" />预计节省成本</div>
+                          <div className="mt-1 font-din text-2xl font-bold text-amber-400">{r.drilldown.savings.costWan}<span className="ml-1 text-xs font-normal text-gray-500">万元</span></div>
+                        </div>
+                        <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-3">
+                          <div className="flex items-center gap-1 text-[11px] text-blue-400"><Leaf className="h-3 w-3" />预计减少碳排放</div>
+                          <div className="mt-1 font-din text-2xl font-bold text-blue-400">{r.drilldown.savings.carbonTons}<span className="ml-1 text-xs font-normal text-gray-500">tCO₂</span></div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-md border border-surface-border p-3">
+                          <div className="mb-2 flex items-center gap-1 text-xs font-medium text-slate-300"><Route className="h-3.5 w-3.5 text-carbon-400" /> 关联线路（{r.drilldown.relatedRoutes.length}）</div>
+                          <div className="space-y-1.5">
+                            {r.drilldown.relatedRoutes.map((rt, ri) => (
+                              <div key={ri} className="flex items-center justify-between rounded bg-surface-card px-2.5 py-1.5 text-xs">
+                                <span className="text-slate-300">{rt.name}</span>
+                                <span className="text-[10px] text-slate-500">{rt.province} · {rt.routeType}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-surface-border p-3">
+                          <div className="mb-2 flex items-center gap-1 text-xs font-medium text-slate-300"><Anchor className="h-3.5 w-3.5 text-blue-400" /> 涉及港口（{r.drilldown.relatedPorts.length}）</div>
+                          <div className="space-y-1.5">
+                            {r.drilldown.relatedPorts.map((p, pi) => (
+                              <div key={pi} className="flex items-center justify-between rounded bg-surface-card px-2.5 py-1.5 text-xs">
+                                <span className="text-slate-300">{p.name}</span>
+                                <span className="text-[10px] text-slate-500">{p.province}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-md border border-carbon-500/30 bg-carbon-500/5 p-3">
+                        <div className="mb-2 flex items-center gap-1 text-xs font-medium text-carbon-400">
+                          <BarChart3 className="h-3.5 w-3.5" /> 与全国均值对比
+                        </div>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="w-24 text-slate-400 shrink-0">时效优势</span>
+                            <div className="flex-1 h-2 bg-surface-card rounded overflow-hidden">
+                              <div className="h-full bg-green-500 rounded" style={{ width: `${Math.min(100, r.drilldown.vsNationalAvg.transitBetterPct)}%` }} />
+                            </div>
+                            <span className="ml-2 w-12 text-right font-din text-green-400">快 {r.drilldown.vsNationalAvg.transitBetterPct}%</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="w-24 text-slate-400 shrink-0">成本优势</span>
+                            <div className="flex-1 h-2 bg-surface-card rounded overflow-hidden">
+                              <div className="h-full bg-amber-500 rounded" style={{ width: `${Math.min(100, r.drilldown.vsNationalAvg.costBetterPct)}%` }} />
+                            </div>
+                            <span className="ml-2 w-12 text-right font-din text-amber-400">省 {r.drilldown.vsNationalAvg.costBetterPct}%</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="w-24 text-slate-400 shrink-0">碳排优势</span>
+                            <div className="flex-1 h-2 bg-surface-card rounded overflow-hidden">
+                              <div className="h-full bg-blue-500 rounded" style={{ width: `${Math.min(100, r.drilldown.vsNationalAvg.carbonBetterPct)}%` }} />
+                            </div>
+                            <span className="ml-2 w-12 text-right font-din text-blue-400">少 {r.drilldown.vsNationalAvg.carbonBetterPct}%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={cn('text-[11px] px-2 py-1 rounded inline-flex items-center gap-1',
+                        r.priority === '高' ? 'bg-alert-red/10 text-alert-red' : r.priority === '中' ? 'bg-alert-orange/10 text-alert-orange' : 'bg-carbon-500/10 text-carbon-400'
+                      )}>
+                        <Lightbulb className="h-3 w-3" /> 实施优先级：{r.priority}级建议 — {r.expectedSaving}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <p className="mt-2 text-sm text-slate-300">{r.description}</p>
-                <p className="mt-1 text-xs text-carbon-400">预期收益：{r.expectedSaving}</p>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </section>
       )}

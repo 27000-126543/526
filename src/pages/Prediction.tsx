@@ -1,10 +1,11 @@
 import ReactECharts from 'echarts-for-react'
 import { useAppStore } from '@/store'
 import { capacityPrediction } from '@/mock/data'
-import type { CapacityPrediction, Recommendation, ExcelParsedResult } from '@/types'
+import type { CapacityPrediction, Recommendation, ExcelParsedResult, CapacityTimelineSlot } from '@/types'
 import * as XLSX from 'xlsx'
-import { Upload, FileSpreadsheet, AlertCircle, TrendingUp, AlertTriangle } from 'lucide-react'
+import { Upload, FileSpreadsheet, AlertCircle, TrendingUp, TrendingDown, AlertTriangle, Sparkles, GitCompare, Plus, Minus, Minus as MinusIcon, Plus as PlusIcon } from 'lucide-react'
 import { useState, useCallback, useRef, useMemo } from 'react'
+import { cn } from '@/lib/utils'
 
 const FIELD_ALIASES: Record<string, string[]> = {
   '起运港': ['起运港', '出发港', '装港', 'POL', 'Port of Loading'],
@@ -138,7 +139,7 @@ function buildPrediction(excel: ExcelParsedResult | null): CapacityPrediction {
 }
 
 export default function Prediction() {
-  const { excelResult, setExcelResult, predictionData, setPredictionData } = useAppStore()
+  const { excelResult, setExcelResult, predictionData, setPredictionData, predictionHistory, setPredictionHistory, compareResult, setCompareResult } = useAppStore()
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [dragOver, setDragOver] = useState(false)
@@ -146,13 +147,17 @@ export default function Prediction() {
 
   const data = useMemo(() => predictionData ?? (capacityPrediction as CapacityPrediction), [predictionData])
 
+  const totalPrevGap = useMemo(() => predictionHistory?.prediction.gap.reduce((s, g) => s + g.gapAmount, 0) ?? 0, [predictionHistory])
+  const totalCurGap = useMemo(() => data.gap.reduce((s, g) => s + g.gapAmount, 0), [data.gap])
+
   const chartOption = useMemo(() => {
     const hours = data.timeline.map(t => t.hour)
     const demand = data.timeline.map(t => t.demand)
     const available = data.timeline.map(t => t.available)
+    const prev = predictionHistory?.prediction.timeline
     return {
       tooltip: { trigger: 'axis', backgroundColor: '#141E2E', borderColor: '#1E3048', textStyle: { color: '#E2E8F0' } },
-      legend: { data: ['需求运力', '可用运力', '运力缺口'], textStyle: { color: '#94A3B8' }, top: 0 },
+      legend: { data: prev ? ['需求运力', '可用运力', '运力缺口', '上次需求'] : ['需求运力', '可用运力', '运力缺口'], textStyle: { color: '#94A3B8' }, top: 0 },
       grid: { left: 50, right: 20, top: 40, bottom: 30 },
       xAxis: { type: 'category', data: hours, axisLine: { lineStyle: { color: '#1E3048' } }, axisLabel: { color: '#94A3B8' } },
       yAxis: { type: 'value', name: 'TEU', nameTextStyle: { color: '#94A3B8' }, axisLine: { lineStyle: { color: '#1E3048' } }, splitLine: { lineStyle: { color: '#1E3048' } }, axisLabel: { color: '#94A3B8' } },
@@ -172,9 +177,13 @@ export default function Prediction() {
           lineStyle: { color: 'rgba(255,71,87,0.8)', width: 2 }, itemStyle: { color: '#FF4757' },
           areaStyle: { color: 'rgba(255,71,87,0.2)' },
         },
+        ...(prev ? [{
+          name: '上次需求', type: 'line', data: prev.map(t => t.demand), smooth: true,
+          lineStyle: { color: '#A78BFA', width: 1.5, type: 'dashed' }, itemStyle: { color: '#A78BFA' },
+        }] : []),
       ],
     }
-  }, [data])
+  }, [data, predictionHistory])
 
   const handleFile = useCallback((file: File) => {
     if (!file.name.match(/\.xlsx?$/)) return
@@ -191,8 +200,65 @@ export default function Prediction() {
           clearInterval(interval)
           try {
             const result = parseExcel(e.target!.result as ArrayBuffer)
+            const pred = buildPrediction(result)
+
+            const inputHash = hashCode(JSON.stringify(result.rows))
+            const prevPred = predictionData ?? (capacityPrediction as CapacityPrediction)
+            const isSameInput = predictionHistory ? predictionHistory.hash === inputHash : false
+
+            const prevTimeline = predictionHistory ? predictionHistory.prediction.timeline : prevPred.timeline
+            const curTimeline = pred.timeline
+
+            const gapByHour = (tl: CapacityTimelineSlot[]) => {
+              const m: Record<string, number> = {}
+              tl.forEach(t => { m[t.hour] = Math.max(0, t.demand - t.available) })
+              return m
+            }
+            const prevG = gapByHour(prevTimeline)
+            const curG = gapByHour(curTimeline)
+            const gapDiff: { hour: string; delta: number; current: number; previous: number }[] = []
+            const allHours = Array.from(new Set([...Object.keys(prevG), ...Object.keys(curG)])).sort()
+            allHours.forEach(h => {
+              const c = curG[h] ?? 0, pv = prevG[h] ?? 0
+              if (c !== pv) gapDiff.push({ hour: h, delta: c - pv, current: c, previous: pv })
+            })
+
+            const prevRecs = (predictionHistory ? predictionHistory.prediction : prevPred).recommendations
+            const curRecs = pred.recommendations
+            const prevIds = new Set(prevRecs.map(r => r.id))
+            const curIds = new Set(curRecs.map(r => r.id))
+            const recAdded = curRecs.filter(r => !prevIds.has(r.id))
+            const recRemoved = prevRecs.filter(r => !curIds.has(r.id))
+
+            const totalPrev = (predictionHistory ? predictionHistory.prediction : prevPred).gap.reduce((s, g) => s + g.gapAmount, 0)
+            const totalCur = pred.gap.reduce((s, g) => s + g.gapAmount, 0)
+            const totalGapDelta = totalCur - totalPrev
+
+            setCompareResult({
+              isSameInput,
+              gapDiff,
+              recAdded,
+              recRemoved,
+              totalGapDelta,
+              previousInputHash: predictionHistory?.hash ?? 0,
+              currentInputHash: inputHash,
+            })
+
+            setPredictionHistory({
+              hash: inputHash,
+              timestamp: new Date().toISOString(),
+              inputSummary: {
+                rowCount: result.rows.length,
+                fields: result.matchedFields,
+                fileName: file.name,
+                totalTEU: result.rows.reduce((s, r) => s + (Number(r['箱量']) || 0), 0),
+                etaCount: result.rows.filter(r => String(r['预计到港时间'] || '').trim() !== '').length,
+              },
+              prediction: pred,
+            })
+
             setExcelResult(result)
-            setPredictionData(buildPrediction(result))
+            setPredictionData(pred)
           } catch {
             setExcelResult(null)
             setPredictionData(null)
@@ -203,7 +269,7 @@ export default function Prediction() {
       }, 200)
     }
     reader.readAsArrayBuffer(file)
-  }, [setExcelResult, setPredictionData])
+  }, [setExcelResult, setPredictionData, setPredictionHistory, setCompareResult, predictionData, predictionHistory])
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -231,7 +297,7 @@ export default function Prediction() {
         <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onInputChange} />
         <Upload className="mx-auto mb-3 h-10 w-10 text-carbon-500" />
         <p className="text-sm text-slate-300">拖拽或点击上传船期表/报关单Excel</p>
-        <p className="mt-1 text-xs text-slate-500">支持 .xlsx / .xls 格式</p>
+        <p className="mt-1 text-xs text-slate-500">支持 .xlsx / .xls 格式 · 相同文件自动识别 · 变更自动对比</p>
         {uploading && (
           <div className="absolute inset-x-8 bottom-4">
             <div className="h-1.5 overflow-hidden rounded-full bg-surface-border">
@@ -241,6 +307,128 @@ export default function Prediction() {
           </div>
         )}
       </div>
+
+      {compareResult && (
+        <div className={cn('rounded-xl border p-4',
+          compareResult.isSameInput
+            ? 'border-carbon-500/40 bg-carbon-500/10'
+            : 'border-blue-500/30 bg-blue-500/5'
+        )}>
+          <div className="mb-3 flex items-center gap-2">
+            {compareResult.isSameInput ? (
+              <>
+                <Sparkles className="h-4 w-4 text-carbon-500" />
+                <span className="text-sm font-medium text-carbon-400">输入文件与上次相同，预测结果一致</span>
+                <span className="ml-auto text-[10px] text-slate-500">
+                  {predictionHistory && new Date(predictionHistory.timestamp).toLocaleString('zh-CN')}
+                </span>
+              </>
+            ) : (
+              <>
+                <GitCompare className="h-4 w-4 text-blue-400" />
+                <span className="text-sm font-medium text-blue-300">与上次预测对比</span>
+                <span className="ml-auto text-[10px] text-slate-500">
+                  {predictionHistory && new Date(predictionHistory.timestamp).toLocaleString('zh-CN')}
+                </span>
+              </>
+            )}
+          </div>
+
+          {!compareResult.isSameInput && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-md border border-surface-border bg-surface-dark p-3">
+                <div className="text-[11px] text-slate-400">总缺口量变化</div>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className={cn('font-din text-2xl font-bold',
+                    compareResult.totalGapDelta > 0 ? 'text-alert-red' : compareResult.totalGapDelta < 0 ? 'text-carbon-400' : 'text-slate-300'
+                  )}>
+                    {compareResult.totalGapDelta > 0 ? '+' : ''}{compareResult.totalGapDelta}
+                  </span>
+                  <span className="text-[10px] text-slate-500">TEU ({totalPrevGap} → {totalCurGap})</span>
+                  {compareResult.totalGapDelta > 0 ? (
+                    <TrendingUp className="h-3.5 w-3.5 text-alert-red ml-auto" />
+                  ) : compareResult.totalGapDelta < 0 ? (
+                    <TrendingDown className="h-3.5 w-3.5 text-carbon-400 ml-auto" />
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="rounded-md border border-surface-border bg-surface-dark p-3">
+                <div className="text-[11px] text-slate-400">新增建议</div>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="font-din text-2xl font-bold text-blue-400">{compareResult.recAdded.length}</span>
+                  <span className="text-[10px] text-slate-500">条</span>
+                  <PlusIcon className="h-3.5 w-3.5 text-blue-400 ml-auto" />
+                </div>
+              </div>
+
+              <div className="rounded-md border border-surface-border bg-surface-dark p-3">
+                <div className="text-[11px] text-slate-400">移除建议</div>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="font-din text-2xl font-bold text-slate-500">{compareResult.recRemoved.length}</span>
+                  <span className="text-[10px] text-slate-500">条</span>
+                  <MinusIcon className="h-3.5 w-3.5 text-slate-500 ml-auto" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!compareResult.isSameInput && compareResult.gapDiff.length > 0 && (
+            <div className="mt-3 rounded-md border border-surface-border bg-surface-dark p-3">
+              <div className="mb-2 text-[11px] text-slate-400">时段缺口变化（仅显示变化项）</div>
+              <div className="flex flex-wrap gap-2">
+                {compareResult.gapDiff.slice(0, 12).map(gd => (
+                  <div key={gd.hour} className={cn('flex items-center gap-1 rounded px-2 py-1 text-[10px]',
+                    gd.delta > 0 ? 'bg-alert-red/10 text-alert-red' : 'bg-carbon-500/10 text-carbon-400'
+                  )}>
+                    <span className="text-slate-400">{gd.hour}</span>
+                    <span className="text-slate-500">{gd.previous}→{gd.current}</span>
+                    {gd.delta > 0 ? (
+                      <span className="font-din">+{gd.delta}</span>
+                    ) : (
+                      <span className="font-din">{gd.delta}</span>
+                    )}
+                  </div>
+                ))}
+                {compareResult.gapDiff.length > 12 && (
+                  <span className="text-[10px] text-slate-500 self-center">+{compareResult.gapDiff.length - 12} 个时段</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!compareResult.isSameInput && (compareResult.recAdded.length > 0 || compareResult.recRemoved.length > 0) && (
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              {compareResult.recAdded.length > 0 && (
+                <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3">
+                  <div className="mb-2 flex items-center gap-1 text-[11px] text-blue-400"><Plus className="h-3 w-3" /> 新增建议</div>
+                  <div className="space-y-1.5">
+                    {compareResult.recAdded.map(r => (
+                      <div key={r.id} className="text-[10px] text-slate-300 rounded bg-surface-card px-2 py-1">
+                        <span className="inline-block mr-1 rounded bg-blue-500/20 px-1.5 py-0.5 text-blue-300 font-medium">{r.priority}</span>
+                        {r.description}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {compareResult.recRemoved.length > 0 && (
+                <div className="rounded-md border border-slate-600/30 bg-slate-600/5 p-3">
+                  <div className="mb-2 flex items-center gap-1 text-[11px] text-slate-400"><Minus className="h-3 w-3" /> 移除建议</div>
+                  <div className="space-y-1.5">
+                    {compareResult.recRemoved.map(r => (
+                      <div key={r.id} className="text-[10px] text-slate-500 line-through rounded bg-surface-card px-2 py-1">
+                        <span className="inline-block mr-1 rounded bg-slate-600/20 px-1.5 py-0.5 text-slate-400 font-medium">{r.priority}</span>
+                        {r.description}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {excelResult && excelResult.missingFields.length > 0 && (
         <div className="flex items-start gap-3 rounded-xl border border-alert-orange/40 bg-alert-orange/10 p-4">
@@ -294,6 +482,7 @@ export default function Prediction() {
         <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-300">
           <TrendingUp className="h-4 w-4 text-carbon-500" />
           72小时运力缺口预测
+          {predictionHistory && <span className="ml-2 text-[10px] text-slate-500 font-normal">紫色虚线 = 上次需求基准</span>}
         </h3>
         <ReactECharts option={chartOption} style={{ height: 320 }} />
       </div>
@@ -304,19 +493,31 @@ export default function Prediction() {
             <AlertCircle className="h-4 w-4 text-alert-red" />
             运力缺口时段
           </h3>
-          {data.gap.map((g, i) => (
-            <div key={i} className="rounded-lg border border-alert-red/30 bg-surface-card p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs text-slate-400">缺口时段 {i + 1}</span>
-                <span className="rounded-full bg-alert-red/20 px-2 py-0.5 text-xs font-medium text-alert-red">-{g.gapAmount} TEU</span>
+          {data.gap.map((g, i) => {
+            const prevGapOfSlot = compareResult?.gapDiff.find(d => d.hour === g.startHour)
+            return (
+              <div key={i} className="rounded-lg border border-alert-red/30 bg-surface-card p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs text-slate-400">缺口时段 {i + 1}</span>
+                  <div className="flex items-center gap-2">
+                    {prevGapOfSlot && (
+                      <span className={cn('text-[10px] font-din rounded px-1.5 py-0.5',
+                        prevGapOfSlot.delta > 0 ? 'bg-alert-red/20 text-alert-red' : 'bg-carbon-500/20 text-carbon-400'
+                      )}>
+                        {prevGapOfSlot.delta > 0 ? '↑' : '↓'}{Math.abs(prevGapOfSlot.delta)}
+                      </span>
+                    )}
+                    <span className="rounded-full bg-alert-red/20 px-2 py-0.5 text-xs font-medium text-alert-red">-{g.gapAmount} TEU</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-300">
+                  <span className="font-din">{g.startHour}</span>
+                  <span className="text-slate-500">→</span>
+                  <span className="font-din">{g.endHour}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-sm text-slate-300">
-                <span className="font-din">{g.startHour}</span>
-                <span className="text-slate-500">→</span>
-                <span className="font-din">{g.endHour}</span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <div className="space-y-3">
@@ -324,16 +525,24 @@ export default function Prediction() {
             <TrendingUp className="h-4 w-4 text-carbon-500" />
             优化建议
           </h3>
-          {data.recommendations.map((rec: Recommendation) => (
-            <div key={rec.id} className="card-glow rounded-lg border border-surface-border bg-surface-card p-4 transition-shadow">
-              <div className="mb-2 flex items-center gap-2">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${typeColor[rec.type]}`}>{rec.type}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityColor[rec.priority]}`}>{rec.priority}优先</span>
+          {data.recommendations.map((rec: Recommendation) => {
+            const isNew = compareResult?.recAdded.some(r => r.id === rec.id)
+            const isRemoved = compareResult?.recRemoved.some(r => r.id === rec.id)
+            return (
+              <div key={rec.id} className={cn('card-glow rounded-lg border bg-surface-card p-4 transition-shadow',
+                isNew ? 'border-blue-500/60 ring-1 ring-blue-500/30' : 'border-surface-border',
+                isRemoved ? 'opacity-50 line-through' : ''
+              )}>
+                <div className="mb-2 flex items-center gap-2">
+                  {isNew && <span className="rounded bg-blue-500/30 px-1.5 py-0.5 text-[10px] text-blue-200 font-medium">NEW</span>}
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${typeColor[rec.type]}`}>{rec.type}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityColor[rec.priority]}`}>{rec.priority}优先</span>
+                </div>
+                <p className="mb-1 text-sm text-slate-300">{rec.description}</p>
+                <p className="text-xs text-carbon-400">预期效果：{rec.expectedEffect}</p>
               </div>
-              <p className="mb-1 text-sm text-slate-300">{rec.description}</p>
-              <p className="text-xs text-carbon-400">预期效果：{rec.expectedEffect}</p>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>

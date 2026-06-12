@@ -14,6 +14,13 @@ export interface TransportRoute {
   province: string
 }
 
+export interface AlertUpgradeInfo {
+  triggeredHoursAgo: number
+  upgradedAt: string
+  thresholdHours: number
+  reason: string
+}
+
 export interface AlertItem {
   id: string
   routeId: string
@@ -30,12 +37,13 @@ export interface AlertItem {
     hqDirectorApproved: boolean
     history: ApprovalRecord[]
   }
+  upgradeInfo?: AlertUpgradeInfo
 }
 
 export interface ApprovalRecord {
   step: number
   role: string
-  action: "确认" | "复核" | "批准" | "驳回"
+  action: "确认" | "复核" | "批准" | "驳回" | "关闭"
   time: string
   comment: string
 }
@@ -57,8 +65,10 @@ export interface PortRoute {
   status: "正常" | "预警" | "超时"
 }
 
+export interface CapacityTimelineSlot { hour: string; demand: number; available: number }
+
 export interface CapacityPrediction {
-  timeline: { hour: string; demand: number; available: number }[]
+  timeline: CapacityTimelineSlot[]
   gap: { startHour: string; endHour: string; gapAmount: number }[]
   recommendations: Recommendation[]
 }
@@ -89,12 +99,55 @@ export interface DiagnosticReport {
     breakdown: { category: string; amount: number; ratio: number }[]
     trend: { week: string; value: number }[]
   }
-  recommendations: {
+  recommendations: ({
     type: "优化路径" | "减排策略"
     description: string
     expectedSaving: string
     priority: "高" | "中" | "低"
-  }[]
+    drilldown?: RecDrilldown
+  })[]
+}
+
+export interface RecDrilldown {
+  relatedRoutes: { id: string; name: string; province: string; routeType: string }[]
+  relatedPorts: { id: string; name: string; province: string }[]
+  savings: {
+    transitDays: number
+    costWan: number
+    carbonTons: number
+  }
+  vsNationalAvg: {
+    transitBetterPct: number
+    costBetterPct: number
+    carbonBetterPct: number
+  }
+}
+
+export type AlertGroupKey = "level1" | "level2" | "pendingApproval" | "overdue"
+
+export interface AlertGroup {
+  key: AlertGroupKey
+  label: string
+  count: number
+  items: AlertItem[]
+}
+
+export interface PredictionHistory {
+  hash: number
+  timestamp: string
+  inputSummary: { totalTEU: number; etaCount: number; rowCount: number; fields: string[]; fileName?: string }
+  prediction: CapacityPrediction
+  totalGapAmount?: number
+}
+
+export interface PredictionCompareResult {
+  isSameInput: boolean
+  gapDiff: { hour: string; previous: number; current: number; delta: number }[]
+  recAdded: Recommendation[]
+  recRemoved: Recommendation[]
+  totalGapDelta: number
+  previousInputHash: number
+  currentInputHash: number
 }
 
 export type UserRole = "scheduler" | "regional_manager" | "hq_director"
