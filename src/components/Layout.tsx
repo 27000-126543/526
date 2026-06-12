@@ -29,10 +29,10 @@ const pageTitleMap: Record<string, string> = {
 
 export default function Layout() {
   const location = useLocation()
-  const { userRole, setUserRole, alerts } = useAppStore()
+  const { userRole, setUserRole, getUnresolvedAlertCount } = useAppStore()
   const [roleOpen, setRoleOpen] = useState(false)
 
-  const unresolvedCount = alerts.filter((a) => a.status !== '已关闭').length
+  const unresolvedCount = getUnresolvedAlertCount()
   const baseRoute = '/' + location.pathname.split('/')[1]
   const pageTitle = pageTitleMap[baseRoute] || '港口详情'
 

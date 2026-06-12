@@ -64,6 +64,14 @@ function parseExcel(buffer: ArrayBuffer): ExcelParsedResult {
   return { headers, rows, matchedFields, missingFields }
 }
 
+function hashCode(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0
+  }
+  return Math.abs(h)
+}
+
 function buildPrediction(excel: ExcelParsedResult | null): CapacityPrediction {
   const fallback = capacityPrediction as CapacityPrediction
   if (!excel || !excel.matchedFields.includes('箱量') || !excel.rows.length) return fallback
@@ -73,24 +81,32 @@ function buildPrediction(excel: ExcelParsedResult | null): CapacityPrediction {
   const slotCount = defaultTimeline.length
   const avgPerSlot = Math.round(totalDemand / slotCount)
 
+  const dataSeed = hashCode(excel.rows.map(r => JSON.stringify(r)).join('|'))
+
   const etaCol = excel.matchedFields.includes('预计到港时间')
   const slotDist = new Array(slotCount).fill(0)
 
   if (etaCol) {
-    excel.rows.forEach(r => {
-      const val = String(r['预计到港时间'] || '')
-      const d = new Date(val)
-      if (isNaN(d.getTime())) return
-      const now = new Date()
-      const diffH = (d.getTime() - now.getTime()) / 3600000
-      const idx = Math.floor(diffH / 6)
-      if (idx >= 0 && idx < slotCount) slotDist[idx] += Number(r['箱量']) || 0
+    const sorted = [...excel.rows].sort((a, b) => String(a['预计到港时间']).localeCompare(String(b['预计到港时间'])))
+    const perSlot = Math.ceil(sorted.length / slotCount)
+    sorted.forEach((r, i) => {
+      const idx = Math.min(Math.floor(i / perSlot), slotCount - 1)
+      slotDist[idx] += Number(r['箱量']) || 0
     })
   }
 
-  const hasDist = slotDist.some(v => v > 0)
-  const demand = defaultTimeline.map((_, i) => hasDist ? Math.max(slotDist[i], Math.round(avgPerSlot * 0.6)) : avgPerSlot + Math.round((Math.random() - 0.3) * avgPerSlot * 0.5))
-  const available = demand.map(d => Math.round(d * 0.85 + (Math.random() - 0.5) * d * 0.1))
+  const hasDist = slotDist.some((v: number) => v > 0)
+  const demand = defaultTimeline.map((_, i) => {
+    if (hasDist) {
+      return Math.max(slotDist[i], Math.round(avgPerSlot * 0.6))
+    }
+    const jitter = ((dataSeed + i * 137) % 31 - 15) / 100
+    return Math.round(avgPerSlot * (1 + jitter))
+  })
+  const available = demand.map((d, i) => {
+    const jitter = ((dataSeed + i * 89) % 21 - 10) / 100
+    return Math.round(d * (0.82 + jitter * 0.08))
+  })
 
   const timeline = defaultTimeline.map((t, i) => ({ hour: t.hour, demand: demand[i], available: available[i] }))
 

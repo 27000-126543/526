@@ -2,6 +2,12 @@ import { create } from 'zustand'
 import type { UserRole, TransportMode, AlertItem, RoleScope, ExcelParsedResult, CapacityPrediction } from '@/types'
 import { alertItems, transportRoutes, roleScopes, capacityPrediction, containerArchives, ports, diagnosticReport } from '@/mock/data'
 
+function parseTimeStr(s: string): Date {
+  const clean = s.replace(/\//g, '-')
+  const d = new Date(clean)
+  return isNaN(d.getTime()) ? new Date(0) : d
+}
+
 interface AppState {
   userRole: UserRole
   setUserRole: (role: UserRole) => void
@@ -11,6 +17,7 @@ interface AppState {
   setSelectedProvince: (province: string) => void
   alerts: AlertItem[]
   updateAlert: (id: string, updates: Partial<AlertItem>) => void
+  autoUpgradeAlerts: () => void
   excelResult: ExcelParsedResult | null
   setExcelResult: (result: ExcelParsedResult | null) => void
   predictionData: CapacityPrediction | null
@@ -22,6 +29,7 @@ interface AppState {
   getFilteredPorts: () => typeof ports
   getFilteredArchives: () => typeof containerArchives
   getFilteredReport: () => typeof diagnosticReport
+  getUnresolvedAlertCount: () => number
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -38,6 +46,32 @@ export const useAppStore = create<AppState>((set, get) => ({
         alert.id === id ? { ...alert, ...updates } : alert
       ),
     })),
+  autoUpgradeAlerts: () => {
+    const now = new Date()
+    set((state) => {
+      const upgraded = state.alerts.map((a) => {
+        if (a.level !== 1) return a
+        if (a.status !== '待处理' && a.status !== '处理中') return a
+        const t = parseTimeStr(a.triggerTime)
+        if (t.getTime() === 0) return a
+        const diffH = (now.getTime() - t.getTime()) / 3600000
+        if (diffH < 2) return a
+        return {
+          ...a,
+          level: 2 as const,
+          status: '处理中' as const,
+          approval: {
+            step: 0 as 0 | 1 | 2 | 3,
+            schedulerConfirmed: false,
+            regionalManagerApproved: false,
+            hqDirectorApproved: false,
+            history: a.approval.history,
+          },
+        }
+      })
+      return { alerts: upgraded }
+    })
+  },
   excelResult: null,
   setExcelResult: (result) => set({ excelResult: result }),
   predictionData: capacityPrediction,
@@ -77,6 +111,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const filteredRoutes = get().getFilteredRoutes()
     const routeIds = new Set(filteredRoutes.map((r) => r.id))
     return containerArchives.filter((a) => routeIds.has(a.routeId))
+  },
+
+  getUnresolvedAlertCount: () => {
+    return get().getFilteredAlerts().filter((a) => a.status !== '已关闭').length
   },
 
   getFilteredReport: () => {
@@ -132,8 +170,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       value: +(t.value * costScale).toFixed(1),
     }))
 
-    const recCount = Math.min(count, diagnosticReport.recommendations.length)
-    const recommendations = diagnosticReport.recommendations.slice(0, recCount)
+    const scopeProvinces = get().getScope().provinces
+    const routeProvinces = [...new Set(filteredRoutes.map((r) => r.province))]
+    const routeCities = filteredRoutes.map((r) => r.name.split('-')[0])
+    const scopePorts = get().getScope().ports
+      .map((pid) => ports.find((p) => p.id === pid)?.name.replace(/港$/, ''))
+      .filter(Boolean) as string[]
+    const allKeywords = [...new Set([...scopeProvinces, ...routeProvinces, ...routeCities, ...scopePorts])]
+    const matchedRecs = diagnosticReport.recommendations.filter((rec) =>
+      allKeywords.some((kw) => rec.description.includes(kw))
+    )
+    const recommendations = matchedRecs.length > 0
+      ? matchedRecs
+      : diagnosticReport.recommendations.slice(0, Math.min(3, count))
 
     return {
       week: diagnosticReport.week,

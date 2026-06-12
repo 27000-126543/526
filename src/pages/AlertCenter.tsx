@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAppStore } from '@/store'
 import type { AlertItem, ApprovalRecord, TransportRoute } from '@/types'
-import { AlertTriangle, Clock, CheckCircle, XCircle, ChevronRight, Zap, User } from 'lucide-react'
+import { AlertTriangle, Clock, CheckCircle, XCircle, ChevronRight, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const levelTabs = ['全部', '一级预警', '二级预警'] as const
@@ -21,11 +21,14 @@ const statusColors: Record<string, string> = {
 }
 
 function generateAutoAlerts(routes: TransportRoute[]): AlertItem[] {
-  const now = new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
+  const now = new Date()
   const result: AlertItem[] = []
-  routes.forEach((r) => {
+  routes.forEach((r, idx) => {
+    const hoursAgo = (idx % 5) * 0.8 + 0.3
+    const triggerDate = new Date(now.getTime() - hoursAgo * 3600 * 1000)
+    const triggerTime = triggerDate.toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
     const base = {
-      routeId: r.id, routeName: r.name, level: 1 as const, triggerTime: now,
+      routeId: r.id, routeName: r.name, level: 1 as const, triggerTime,
       status: '待处理' as const,
       approval: { step: 0 as 0 | 1 | 2 | 3, schedulerConfirmed: false, regionalManagerApproved: false, hqDirectorApproved: false, history: [] as ApprovalRecord[] },
     }
@@ -34,18 +37,25 @@ function generateAutoAlerts(routes: TransportRoute[]): AlertItem[] {
       result.push({ ...base, id: `AUTO-${r.id}`, type: '时效超标' as const, description: `自动检测：平均时效${r.avgTransitTime}天，超标准${r.standardTransitTime}天${pct}%，已超20%阈值` })
     }
     if (r.status === '超时') {
-      result.push({ ...base, id: `AUTO-${r.id}-DELAY`, type: '节点滞留' as const, description: `自动检测：${r.name}状态为超时，节点严重滞留` })
+      const delayBase = {
+        ...base,
+        id: `AUTO-${r.id}-DELAY`,
+        type: '节点滞留' as const,
+        description: `自动检测：${r.name}状态为超时，节点严重滞留`,
+      }
+      result.push(delayBase)
     }
   })
   return result
 }
 
 export default function AlertCenter() {
-  const { alerts, updateAlert, userRole, getFilteredAlerts, getFilteredRoutes } = useAppStore()
+  const { alerts, updateAlert, userRole, getFilteredAlerts, getFilteredRoutes, autoUpgradeAlerts } = useAppStore()
   const [levelFilter, setLevelFilter] = useState<string>('全部')
   const [statusFilter, setStatusFilter] = useState<string>('全部')
   const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null)
   const [autoMerged, setAutoMerged] = useState(false)
+  const [upgraded, setUpgraded] = useState(false)
 
   useEffect(() => {
     if (autoMerged) return
@@ -58,6 +68,12 @@ export default function AlertCenter() {
     }
     setAutoMerged(true)
   }, [autoMerged])
+
+  useEffect(() => {
+    if (!autoMerged || upgraded) return
+    autoUpgradeAlerts()
+    setUpgraded(true)
+  }, [autoMerged, upgraded, autoUpgradeAlerts])
 
   const filteredAlerts = useMemo(() => {
     const base = getFilteredAlerts()
@@ -100,39 +116,17 @@ export default function AlertCenter() {
     setSelectedAlert({ ...alert, ...updates } as AlertItem)
   }
 
-  const handleSimulateUpgrade = (alert: AlertItem) => {
-    const now = new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
-    const updates: Partial<AlertItem> = {
-      level: 2,
-      status: '已升级',
-      approval: {
-        step: 1 as 0 | 1 | 2 | 3,
-        schedulerConfirmed: true,
-        regionalManagerApproved: false,
-        hqDirectorApproved: false,
-        history: [
-          ...alert.approval.history,
-          { step: 1, role: '调度员 张伟', action: '确认' as const, time: now, comment: '2小时超时自动升级，系统自动确认' },
-        ],
-      },
-    }
-    updateAlert(alert.id, updates)
-    setSelectedAlert((prev) => prev?.id === alert.id ? { ...alert, ...updates } as AlertItem : prev)
-  }
-
   const canApprove = (alert: AlertItem) => {
     const nextStep = alert.approval.step + 1
     const stepConfig = stepHandlers.find((s) => s.step === nextStep)
     return stepConfig?.roleKey === userRole && alert.status !== '已关闭'
   }
 
-  const canUpgrade = (alert: AlertItem) => alert.level === 1 && (alert.status === '待处理' || alert.status === '处理中')
-
   return (
     <div className="space-y-5 font-noto">
       <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-300">
         <AlertTriangle className="mr-2 inline h-4 w-4" />
-        规则：连续3天平均时效超过标准值20%或节点滞留超时自动生成一级预警
+        规则：连续3天平均时效超标准值20%或节点滞留超时自动生成一级预警；超过2小时未处置自动升级为二级，进入三级审批流程
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -183,16 +177,9 @@ export default function AlertCenter() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setSelectedAlert(alert)} className="flex items-center gap-1 text-carbon-500 hover:text-carbon-400 transition-colors">
-                      详情 <ChevronRight className="h-3 w-3" />
-                    </button>
-                    {canUpgrade(alert) && (
-                      <button onClick={() => handleSimulateUpgrade(alert)} className="flex items-center gap-1 rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/30 transition-colors">
-                        <Zap className="h-3 w-3" /> 模拟2小时超时
-                      </button>
-                    )}
-                  </div>
+                  <button onClick={() => setSelectedAlert(alert)} className="flex items-center gap-1 text-carbon-500 hover:text-carbon-400 transition-colors">
+                    详情 <ChevronRight className="h-3 w-3" />
+                  </button>
                 </td>
               </tr>
             ))}
